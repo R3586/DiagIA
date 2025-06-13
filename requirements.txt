@@ -1,4 +1,4 @@
-tensorflow-cpu==2.16.1
+tensorflow==2.16.1
 gunicorn
 flask
 matplotlib
