@@ -9,8 +9,13 @@ import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 
-# Cargar modelo entrenado
-model = tf.keras.models.load_model('brain_tumor_cnn.h5')
+# Cargar modelo TFLite
+interpreter = tf.lite.Interpreter(model_path='brain_tumor_cnn.tflite')
+interpreter.allocate_tensors()
+
+# Obtener detalles de entrada y salida
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
 
 # Diccionario de clases
 class_names = ['glioma', 'meningioma', 'notumor', 'pituitary']
@@ -19,6 +24,20 @@ class_names = ['glioma', 'meningioma', 'notumor', 'pituitary']
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+def predict_with_tflite(img_array):
+    # Preprocesar imagen para el modelo TFLite
+    img_array = img_array.astype(np.float32) / 255.0
+    
+    # Configurar la entrada del modelo
+    interpreter.set_tensor(input_details[0]['index'], img_array)
+    
+    # Ejecutar inferencia
+    interpreter.invoke()
+    
+    # Obtener resultados
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    return output_data[0]
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -41,11 +60,10 @@ def index():
             # Preprocesar imagen
             img = image.load_img(filepath, target_size=(128, 128))
             img_array = image.img_to_array(img)
-            img_array = np.expand_dims(img_array, axis=0)
-            img_array = img_array / 255.0
+            img_array = np.expand_dims(img_array, axis=0)  # Añadir dimensión batch
 
-            # Predicción
-            prediction = model.predict(img_array)[0]
+            # Predicción con TFLite
+            prediction = predict_with_tflite(img_array)
             predicted_class = class_names[np.argmax(prediction)]
             prediction_result = f"Predicción: {predicted_class.upper()}"
             probabilities = {class_names[i]: float(f"{prob:.4f}") for i, prob in enumerate(prediction)}
@@ -63,6 +81,4 @@ def index():
     return render_template('index.html', prediction=prediction_result, image_name=filename, probs=probabilities)
 
 if __name__ == '__main__':
-    if not os.path.exists(app.config ['UPLOAD_FOLDER']):
-        os.makedirs(app.config [ 'UPLOAD_FOLDER'])
-    app.run(debug=True, host="0.0.0.0", port=os.getenv("PORT", default=5000))
+    app.run(debug=True)
